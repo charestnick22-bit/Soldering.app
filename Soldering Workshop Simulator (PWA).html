@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soldering Workshop Simulator PWA</title>
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SolderLab">
+    <meta name="description" content="Interactive Soldering & Electronics Repair Simulator PWA">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        workshop: {
+                            bg: '#0f172a',
+                            card: '#1e293b',
+                            border: '#334155',
+                            accent: '#3b82f6',
+                            copper: '#b87333',
+                            solder: '#d1d5db',
+                            solderGood: '#e2e8f0',
+                            solderCold: '#64748b',
+                            solderBurned: '#451a03'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Tone.js for dynamic web audio synth/sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+        canvas {
+            touch-action: none;
+        }
+        .glow-iron {
+            filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.8));
+        }
+        .glow-copper {
+            filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.6));
+        }
+    </style>
+</head>
+<body class="bg-workshop-bg text-slate-100 font-sans min-h-screen flex flex-col overflow-x-hidden">
+
+    <!-- Top Header -->
+    <header class="bg-workshop-card border-b border-workshop-border px-4 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30 shadow-lg">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-blue-600/20 text-blue-400 rounded-lg border border-blue-500/30">
+                <i class="ph-bold ph-flame text-2xl"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="font-bold text-lg leading-tight tracking-wide bg-gradient-to-r from-blue-400 to-indigo-300 bg-clip-text text-transparent">
+                        SolderLab 3D & Virtual Workshop
+                    </h1>
+                    <!-- PWA Status Indicator Badge -->
+                    <span id="pwa-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-500/40 flex items-center gap-1 shadow-sm">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span id="pwa-status-text">PWA Ready</span>
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400">Interactive Soldering & Electronics Repair Simulator</p>
+            </div>
+        </div>
+
+        <!-- Tool Selection Header Quick Bar -->
+        <div class="flex items-center bg-slate-900/80 p-1 rounded-xl border border-workshop-border shadow-inner space-x-1">
+            <button id="tool-iron-btn" onclick="selectTool('iron')" class="px-3 py-1.5 rounded-lg flex items-center space-x-2 text-xs font-semibold transition-all bg-blue-600 text-white shadow-md">
+                <i class="ph-bold ph-lightning"></i>
+                <span>Soldering Iron</span>
+            </button>
+            <button id="tool-solder-btn" onclick="selectTool('solder')" class="px-3 py-1.5 rounded-lg flex items-center space-x-2 text-xs font-semibold transition-all text-slate-400 hover:text-slate-200">
+                <i class="ph-bold ph-coil"></i>
+                <span>Solder Wire</span>
+            </button>
+            <button id="tool-wick-btn" onclick="selectTool('wick')" class="px-3 py-1.5 rounded-lg flex items-center space-x-2 text-xs font-semibold transition-all text-slate-400 hover:text-slate-200">
+                <i class="ph-bold ph-scissors"></i>
+                <span>Desoldering Wick</span>
+            </button>
+            <button id="tool-sponge-btn" onclick="cleanIronTip()" class="px-3 py-1.5 rounded-lg flex items-center space-x-2 text-xs font-semibold transition-all text-emerald-400 hover:bg-emerald-950/40 border border-emerald-500/20">
+                <i class="ph-bold ph-drop"></i>
+                <span>Brass Sponge</span>
+            </button>
+        </div>
+
+        <!-- Global Stats / Audio & PWA Install Button -->
+        <div class="flex items-center space-x-3">
+            <!-- Dynamic PWA Install Header Button -->
+            <button id="pwa-install-btn" onclick="triggerPwaInstall()" class="hidden px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/30 text-xs font-bold items-center space-x-1.5 shadow-lg transition animate-bounce">
+                <i class="ph-bold ph-download-simple text-sm"></i>
+                <span>Install App</span>
+            </button>
+
+            <button id="audio-toggle-btn" onclick="toggleAudio()" class="p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 transition" title="Toggle Sound FX">
+                <i id="audio-icon" class="ph-bold ph-speaker-high text-lg"></i>
+            </button>
+            <button onclick="resetCurrentBoard()" class="px-3 py-1.5 rounded-lg bg-red-950/40 border border-red-800/40 text-red-300 hover:bg-red-900/50 text-xs font-medium flex items-center space-x-1 transition">
+                <i class="ph-bold ph-arrow-counter-clockwise text-sm"></i>
+                <span>Reset Board</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Interactive PWA Installation Banner -->
+    <div id="pwa-install-banner" class="hidden bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-purple-900/90 border-b border-blue-500/40 px-4 py-2.5 backdrop-blur z-20 flex items-center justify-between text-xs text-blue-100 shadow-md">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-300 text-lg flex-shrink-0">
+                <i class="ph-bold ph-device-mobile"></i>
+            </div>
+            <div>
+                <span class="font-bold text-white">Install SolderLab Workshop Simulator</span>
+                <p class="text-[11px] text-blue-200">Add to your home screen for full offline practice and fullscreen mode!</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            <button onclick="triggerPwaInstall()" class="px-3 py-1.5 bg-blue-500 hover:bg-blue-400 text-white font-bold rounded-lg shadow-sm transition">
+                Install Now
+            </button>
+            <button onclick="dismissPwaBanner()" class="p-1.5 text-blue-300 hover:text-white rounded-lg hover:bg-blue-800/50">
+                <i class="ph-bold ph-x text-sm"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Container Layout -->
+    <div class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+        <!-- Sidebar Navigation & Mode Selection -->
+        <aside class="w-full lg:w-80 bg-workshop-card/70 backdrop-blur border-r border-workshop-border flex flex-col flex-shrink-0 z-20">
+            <!-- Mode Selector Tabs -->
+            <div class="p-4 border-b border-workshop-border">
+                <label class="text-xs font-semibold uppercase tracking-wider text-slate-400 block mb-2">Practice Workpiece</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="switchMode('through-hole')" id="mode-btn-through-hole" class="mode-btn p-2.5 text-left rounded-xl border border-blue-500/50 bg-blue-950/30 text-white font-medium text-xs flex flex-col gap-1 transition">
+                        <div class="flex items-center justify-between">
+                            <i class="ph-bold ph-circuit-board text-blue-400 text-lg"></i>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 border border-emerald-700/50">Beginner</span>
+                        </div>
+                        <span class="font-bold">Through-Hole PCB</span>
+                    </button>
+
+                    <button onclick="switchMode('smd')" id="mode-btn-smd" class="mode-btn p-2.5 text-left rounded-xl border border-slate-700 bg-slate-800/50 text-slate-300 font-medium text-xs flex flex-col gap-1 transition hover:bg-slate-800">
+                        <div class="flex items-center justify-between">
+                            <i class="ph-bold ph-cpu text-purple-400 text-lg"></i>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/60 text-amber-300 border border-amber-700/50">Intermediate</span>
+                        </div>
+                        <span class="font-bold">SMD Components</span>
+                    </button>
+
+                    <button onclick="switchMode('wire-splice')" id="mode-btn-wire-splice" class="mode-btn p-2.5 text-left rounded-xl border border-slate-700 bg-slate-800/50 text-slate-300 font-medium text-xs flex flex-col gap-1 transition hover:bg-slate-800">
+                        <div class="flex items-center justify-between">
+                            <i class="ph-bold ph-screencast text-amber-400 text-lg"></i>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-300 border border-emerald-700/50">Easy</span>
+                        </div>
+                        <span class="font-bold">Wire Splicing</span>
+                    </button>
+
+                    <button onclick="switchMode('stained-glass')" id="mode-btn-stained-glass" class="mode-btn p-2.5 text-left rounded-xl border border-slate-700 bg-slate-800/50 text-slate-300 font-medium text-xs flex flex-col gap-1 transition hover:bg-slate-800">
+                        <div class="flex items-center justify-between">
+                            <i class="ph-bold ph-diamond text-teal-400 text-lg"></i>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-900/60 text-rose-300 border border-rose-700/50">Advanced</span>
+                        </div>
+                        <span class="font-bold">Stained Glass</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Temperature Control Station -->
+            <div class="p-4 border-b border-workshop-border bg-slate-900/40">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <i class="ph-bold ph-thermometer-hot text-red-400"></i> Soldering Station Temp
+                    </span>
+                    <span id="temp-display" class="font-mono text-sm font-bold text-amber-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">350 °C</span>
+                </div>
+                <input type="range" id="temp-slider" min="150" max="480" value="350" step="5" oninput="updateTemperature(this.value)" class="w-full accent-blue-500 bg-slate-700 rounded-lg h-2 cursor-pointer">
+                <div class="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                    <span>150°C (Off/Cold)</span>
+                    <span>350°C (Ideal)</span>
+                    <span>480°C (Overheat)</span>
+                </div>
+            </div>
+
+            <!-- Technique Interactive Checklist & Guide -->
+            <div class="p-4 flex-1 overflow-y-auto space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Standard Procedure</h3>
+                    <span id="step-counter" class="text-[10px] text-blue-400 font-mono bg-blue-950 px-2 py-0.5 rounded">Step 1/5</span>
+                </div>
+
+                <div class="space-y-2 text-xs">
+                    <div id="step-1" class="p-2.5 rounded-lg bg-blue-950/40 border border-blue-500/40 flex items-start space-x-2 transition">
+                        <span class="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">1</span>
+                        <div>
+                            <p class="font-semibold text-slate-200">Heat Joint & Lead</p>
+                            <p class="text-slate-400 text-[11px]">Hover hot iron tip over pad & lead simultaneously for 1-2 sec.</p>
+                        </div>
+                    </div>
+
+                    <div id="step-2" class="p-2.5 rounded-lg bg-slate-800/40 border border-slate-700 flex items-start space-x-2 transition opacity-60">
+                        <span class="w-4 h-4 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">2</span>
+                        <div>
+                            <p class="font-semibold text-slate-200">Apply Solder Wire</p>
+                            <p class="text-slate-400 text-[11px]">Touch solder wire to the heated joint (not directly to tip).</p>
+                        </div>
+                    </div>
+
+                    <div id="step-3" class="p-2.5 rounded-lg bg-slate-800/40 border border-slate-700 flex items-start space-x-2 transition opacity-60">
+                        <span class="w-4 h-4 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">3</span>
+                        <div>
+                            <p class="font-semibold text-slate-200">Form Concave Fillet</p>
+                            <p class="text-slate-400 text-[11px]">Allow solder to flow around target area naturally.</p>
+                        </div>
+                    </div>
+
+                    <div id="step-4" class="p-2.5 rounded-lg bg-slate-800/40 border border-slate-700 flex items-start space-x-2 transition opacity-60">
+                        <span class="w-4 h-4 rounded-full bg-slate-700 text-slate-300 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">4</span>
+                        <div>
+                            <p class="font-semibold text-slate-200">Remove Solder, Then Heat</p>
+                            <p class="text-slate-400 text-[11px]">Withdraw solder wire first, then remove iron tip 1 second later.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tip Condition Bar -->
+                <div class="mt-4 pt-3 border-t border-workshop-border">
+                    <div class="flex justify-between items-center text-xs mb-1">
+                        <span class="text-slate-400">Iron Tip Oxidation Level:</span>
+                        <span id="tip-oxidation-text" class="font-semibold text-emerald-400">Clean & Tinned</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div id="tip-health-bar" class="bg-emerald-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mt-1">Dirty tips conduct heat poorly. Click "Brass Sponge" to clean.</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Canvas Interactive Area -->
+        <main class="flex-1 flex flex-col relative bg-slate-950 overflow-hidden">
+            <!-- HUD / Live Physics Readout -->
+            <div class="absolute top-4 left-4 z-10 flex flex-wrap gap-2 pointer-events-none">
+                <div class="bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-300 flex items-center gap-2 shadow-lg">
+                    <i class="ph-bold ph-thermometer text-amber-400"></i>
+                    <span>Pad Temp:</span>
+                    <span id="pad-temp-hud" class="font-mono text-amber-300 font-bold">25 °C</span>
+                </div>
+                <div class="bg-slate-900/90 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-300 flex items-center gap-2 shadow-lg">
+                    <i class="ph-bold ph-circle-half text-slate-400"></i>
+                    <span>Active Tool:</span>
+                    <span id="active-tool-hud" class="font-semibold text-blue-400">Soldering Iron (Press Key 1)</span>
+                </div>
+            </div>
+
+            <!-- Canvas Container -->
+            <div id="canvas-container" class="flex-1 w-full h-full relative cursor-crosshair">
+                <canvas id="sim-canvas" class="w-full h-full block"></canvas>
+            </div>
+
+            <!-- Bottom Floating Quality Inspector / Evaluation Bar -->
+            <div class="p-4 bg-workshop-card/80 backdrop-blur border-t border-workshop-border flex flex-wrap items-center justify-between gap-4 z-20">
+                <div class="flex items-center space-x-4">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Total Progress</span>
+                        <div class="flex items-center space-x-2">
+                            <span id="completed-joints-count" class="text-lg font-bold text-slate-100 font-mono">0 / 6</span>
+                            <span class="text-xs text-slate-400">Joints Completed</span>
+                        </div>
+                    </div>
+                    <div class="h-8 w-px bg-slate-700"></div>
+                    <div class="flex flex-col">
+                        <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Average Quality Score</span>
+                        <div id="score-stars" class="flex text-amber-400 text-sm">
+                            <i class="ph-fill ph-star"></i>
+                            <i class="ph-fill ph-star"></i>
+                            <i class="ph-fill ph-star"></i>
+                            <i class="ph-fill ph-star"></i>
+                            <i class="ph-bold ph-star text-slate-600"></i>
+                            <span id="score-percentage" class="ml-2 font-mono text-xs text-slate-300 font-bold">85%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button onclick="evaluateWork()" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 flex items-center space-x-2 transition">
+                        <i class="ph-bold ph-check-circle text-base"></i>
+                        <span>Inspect & Grade Work</span>
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Evaluation Modal Dialog -->
+    <div id="eval-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-workshop-card border border-workshop-border rounded-2xl max-w-md w-full p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-200">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">
+                <i class="ph-bold ph-x"></i>
+            </button>
+
+            <div class="text-center mb-6">
+                <div id="modal-icon-container" class="w-16 h-16 rounded-2xl bg-blue-600/20 text-blue-400 flex items-center justify-center mx-auto mb-3 border border-blue-500/30 text-3xl">
+                    <i class="ph-bold ph-trophy"></i>
+                </div>
+                <h2 id="modal-title" class="text-xl font-bold text-white">Workpiece Inspection Report</h2>
+                <p id="modal-subtitle" class="text-xs text-slate-400 mt-1">Detailed quality analysis of solder joints</p>
+            </div>
+
+            <div class="space-y-3 mb-6 bg-slate-900/60 p-4 rounded-xl border border-slate-800 text-xs">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">Ideal Shiny Fillets:</span>
+                    <span id="eval-ideal-count" class="font-mono font-bold text-emerald-400">0</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">Cold Joints (Underheated):</span>
+                    <span id="eval-cold-count" class="font-mono font-bold text-slate-400">0</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">Overheated / Burned Pads:</span>
+                    <span id="eval-burned-count" class="font-mono font-bold text-amber-400">0</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400">Solder Bridges (Short Circuits):</span>
+                    <span id="eval-bridge-count" class="font-mono font-bold text-red-400">0</span>
+                </div>
+                <div class="border-t border-slate-800 pt-2 flex justify-between items-center text-sm">
+                    <span class="font-bold text-slate-200">Overall Grade:</span>
+                    <span id="eval-grade" class="font-bold font-mono text-blue-400 text-base">A+ (96%)</span>
+                </div>
+            </div>
+
+            <p id="eval-feedback" class="text-xs text-slate-300 italic mb-6 text-center leading-relaxed bg-slate-950 p-3 rounded-lg border border-slate-800/80">
+                "Great technique! Concave fillets with shiny luster and zero heat damage."
+            </p>
+
+            <div class="flex gap-2">
+                <button onclick="closeModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition">
+                    Continue Work
+                </button>
+                <button onclick="resetCurrentBoard(); closeModal();" class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition shadow-md">
+                    Try Again
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Logic & Simulation Script -->
+    <script>
+        /* --- AUDIO SYNTH SETUP (Tone.js) --- */
+        let audioEnabled = true;
+        let sizzleNoise = null;
+        let sizzleFilter = null;
+        let sizzleGain = null;
+
+        function initAudio() {
+            if (sizzleNoise) return;
+            try {
+                // Sizzle noise generator for melting solder & heating flux
+                sizzleNoise = new Tone.Noise("white").start();
+                sizzleFilter = new Tone.Filter(3000, "bandpass");
+                sizzleGain = new Tone.Gain(0).toDestination();
+                sizzleNoise.connect(sizzleFilter);
+                sizzleFilter.connect(sizzleGain);
+            } catch(e) {
+                console.log("Audio context initialized on first user click");
+            }
+        }
+
+        function toggleAudio() {
+            audioEnabled = !audioEnabled;
+            const btnIcon = document.getElementById('audio-icon');
+            if (audioEnabled) {
+                btnIcon.className = "ph-bold ph-speaker-high text-lg";
+            } else {
+                btnIcon.className = "ph-bold ph-speaker-slash text-lg text-slate-500";
+                if (sizzleGain) sizzleGain.gain.rampTo(0, 0.05);
+            }
+        }
+
+        function playSizzle(intensity) {
+            if (!audioEnabled) return;
+            initAudio();
+            if (sizzleGain && Tone.context.state === 'running') {
+                const targetGain = Math.min(Math.max(intensity, 0), 0.15);
+                sizzleGain.gain.rampTo(targetGain, 0.05);
+            }
+        }
+
+        function stopSizzle() {
+            if (sizzleGain && audioEnabled) {
+                sizzleGain.gain.rampTo(0, 0.1);
+            }
+        }
+
+        function playBeep(freq = 440, type = "sine", duration = 0.1) {
+            if (!audioEnabled) return;
+            initAudio();
+            try {
+                const synth = new Tone.Synth({
+                    oscillator: { type: type },
+                    envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 }
+                }).toDestination();
+                synth.volume.value = -12;
+                synth.triggerAttackRelease(freq, duration);
+            } catch(e){}
+        }
+
+        /* --- GLOBAL SIMULATION STATE --- */
+        let currentMode = 'through-hole';
+        let activeTool = 'iron'; // 'iron', 'solder', 'wick'
+        let stationTemp = 350; // Celsius
+        let tipOxidation = 0; // 0 clean, 1 dirty/oxidized
+
+        // Mouse/Touch Pointer Coordinates relative to Canvas
+        let mouseX = 0;
+        let mouseY = 0;
+        let isMouseDown = false;
+
+        // Targets/Pads for current workpiece
+        let targetJoints = [];
+        let solderParticles = []; // Visual smoke/spark particles
+
+        // Canvas element reference
+        const canvas = document.getElementById('sim-canvas');
+        const ctx = canvas.getContext('2d');
+
+        /* --- MODE DEFINITIONS & DATA BUILDER --- */
+        function initModeData(mode) {
+            currentMode = mode;
+            targetJoints = [];
+            solderParticles = [];
+
+            const w = canvas.width || 800;
+            const h = canvas.height || 600;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            if (mode === 'through-hole') {
+                // PCB Board with DIP-8 IC and Resistor Through-Hole pads
+                const padRadius = 22;
+
+                // DIP Chip Leads (6 pads)
+                for (let i = 0; i < 3; i++) {
+                    targetJoints.push({
+                        id: `ic-l-${i}`,
+                        x: cx - 120,
+                        y: cy - 100 + i * 80,
+                        radius: padRadius,
+                        holeRadius: 8,
+                        temp: 25,
+                        solderAmount: 0, // 0 to 100
+                        quality: 'empty', // 'empty', 'cold', 'ideal', 'burned', 'overfilled'
+                        burnedTime: 0,
+                        componentType: 'DIP Lead',
+                        leadX: cx - 120,
+                        leadY: cy - 100 + i * 80
+                    });
+                    targetJoints.push({
+                        id: `ic-r-${i}`,
+                        x: cx + 120,
+                        y: cy - 100 + i * 80,
+                        radius: padRadius,
+                        holeRadius: 8,
+                        temp: 25,
+                        solderAmount: 0,
+                        quality: 'empty',
+                        burnedTime: 0,
+                        componentType: 'DIP Lead',
+                        leadX: cx + 120,
+                        leadY: cy - 100 + i * 80
+                    });
+                }
+            } else if (mode === 'smd') {
+                // Surface Mount 0805 Pads
+                const padW = 35;
+                const padH = 50;
+
+                const smdPositions = [
+                    { x: cx - 140, y: cy - 80 }, { x: cx - 70, y: cy - 80 },
+                    { x: cx + 70, y: cy - 80 }, { x: cx + 140, y: cy - 80 },
+                    { x: cx - 140, y: cy + 80 }, { x: cx - 70, y: cy + 80 },
+                    { x: cx + 70, y: cy + 80 }, { x: cx + 140, y: cy + 80 }
+                ];
+
+                smdPositions.forEach((pos, idx) => {
+                    targetJoints.push({
+                        id: `smd-${idx}`,
+                        x: pos.x,
+                        y: pos.y,
+                        radius: 25,
+                        isRect: true,
+                        width: padW,
+                        height: padH,
+                        temp: 25,
+                        solderAmount: 0,
+                        quality: 'empty',
+                        burnedTime: 0,
+                        componentType: 'SMD Pad'
+                    });
+                });
+            } else if (mode === 'wire-splice') {
+                // Wire to wire Western Union splice joint points
+                for (let i = 0; i < 4; i++) {
+                    targetJoints.push({
+                        id: `wire-${i}`,
+                        x: cx - 150 + i * 100,
+                        y: cy,
+                        radius: 30,
+                        temp: 25,
+                        solderAmount: 0,
+                        quality: 'empty',
+                        burnedTime: 0,
+                        componentType: 'Wire Twist Segment'
+                    });
+                }
+            } else if (mode === 'stained-glass') {
+                // Copper foil glass seam lines (nodes)
+                for (let i = 0; i < 5; i++) {
+                    targetJoints.push({
+                        id: `glass-${i}`,
+                        x: cx - 200 + i * 100,
+                        y: cy - 50 + (i % 2) * 100,
+                        radius: 38,
+                        temp: 25,
+                        solderAmount: 0,
+                        quality: 'empty',
+                        burnedTime: 0,
+                        componentType: 'Copper Foil Seam'
+                    });
+                }
+            }
+
+            updateProgressHUD();
+        }
+
+        /* --- RESIZE & CANVAS SETUP --- */
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            if (!container) return;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            initModeData(currentMode);
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        /* --- INTERACTION HANDLERS --- */
+        function handlePointerMove(e) {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        }
+
+        function handlePointerDown(e) {
+            isMouseDown = true;
+            handlePointerMove(e);
+            initAudio();
+        }
+
+        function handlePointerUp() {
+            isMouseDown = false;
+        }
+
+        canvas.addEventListener('mousemove', handlePointerMove);
+        canvas.addEventListener('mousedown', handlePointerDown);
+        canvas.addEventListener('mouseup', handlePointerUp);
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                handlePointerMove(e.touches[0]);
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchstart', (e) => {
+            isMouseDown = true;
+            if (e.touches.length > 0) {
+                handlePointerMove(e.touches[0]);
+            }
+            initAudio();
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', handlePointerUp);
+
+        // Keyboard Shortcuts
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '1') selectTool('iron');
+            if (e.key === '2') selectTool('solder');
+            if (e.key === '3') selectTool('wick');
+            if (e.key === 'c' || e.key === 'C') cleanIronTip();
+        });
+
+        /* --- TOOL & STATION CONTROLS --- */
+        function selectTool(tool) {
+            activeTool = tool;
+            
+            // UI Button Highlight states
+            ['iron', 'solder', 'wick'].forEach(t => {
+                const btn = document.getElementById(`tool-${t}-btn`);
+                if (t === tool) {
+                    btn.className = "px-3 py-1.5 rounded-lg flex items-center space-x-2 text-xs font-semibold transition-all bg-blue-600 text-white shadow-md";
+                } else {
+                    btn.className = "px-3 py-1.5 rounded-lg flex items-center space-x-2 text-xs font-semibold transition-all text-slate-400 hover:text-slate-200";
+                }
+            });
+
+            const hud = document.getElementById('active-tool-hud');
+            if (tool === 'iron') hud.innerText = "Soldering Iron (Hot Tip)";
+            if (tool === 'solder') hud.innerText = "Solder Wire Feed";
+            if (tool === 'wick') hud.innerText = "Desoldering Wick";
+
+            playBeep(600, "sine", 0.05);
+        }
+
+        function updateTemperature(val) {
+            stationTemp = parseInt(val);
+            document.getElementById('temp-display').innerText = `${stationTemp} °C`;
+        }
+
+        function cleanIronTip() {
+            tipOxidation = 0;
+            document.getElementById('tip-health-bar').style.width = '0%';
+            document.getElementById('tip-oxidation-text').innerText = 'Clean & Tinned';
+            document.getElementById('tip-oxidation-text').className = 'font-semibold text-emerald-400';
+            playBeep(800, "triangle", 0.08);
+        }
+
+        function switchMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('border-blue-500/50', 'bg-blue-950/30', 'text-white');
+                btn.classList.add('border-slate-700', 'bg-slate-800/50', 'text-slate-300');
+            });
+
+            const activeBtn = document.getElementById(`mode-btn-${mode}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('border-slate-700', 'bg-slate-800/50', 'text-slate-300');
+                activeBtn.classList.add('border-blue-500/50', 'bg-blue-950/30', 'text-white');
+            }
+
+            initModeData(mode);
+        }
+
+        function resetCurrentBoard() {
+            initModeData(currentMode);
+            playBeep(300, "square", 0.1);
+        }
+
+        /* --- PHYSICS SIMULATION & UPDATE LOOP --- */
+        function updateSimulation() {
+            let isSizzling = false;
+            let currentHoverTemp = 25;
+
+            // Tip Oxidation rate when left hot
+            if (stationTemp > 380) {
+                tipOxidation = Math.min(1, tipOxidation + 0.0003);
+            } else {
+                tipOxidation = Math.min(1, tipOxidation + 0.00005);
+            }
+
+            const oxPercent = Math.round(tipOxidation * 100);
+            document.getElementById('tip-health-bar').style.width = `${oxPercent}%`;
+            if (oxPercent > 60) {
+                document.getElementById('tip-oxidation-text').innerText = 'Oxidized (High Heat Loss)';
+                document.getElementById('tip-oxidation-text').className = 'font-semibold text-rose-400';
+            }
+
+            // Thermal efficiency multiplier based on tip cleanliness
+            const heatTransferEfficiency = 1 - (tipOxidation * 0.6);
+
+            targetJoints.forEach(joint => {
+                // Calculate distance from mouse pointer to joint center
+                const dx = mouseX - joint.x;
+                const dy = mouseY - joint.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                const isHovered = dist < joint.radius + 10;
+
+                if (isHovered) {
+                    currentHoverTemp = Math.round(joint.temp);
+
+                    // If tool is Iron or Desoldering Wick
+                    if (activeTool === 'iron' || activeTool === 'wick') {
+                        // Heat up joint towards iron temperature
+                        const targetTemp = stationTemp;
+                        const heatRate = 2.5 * heatTransferEfficiency;
+                        if (joint.temp < targetTemp) {
+                            joint.temp += (targetTemp - joint.temp) * 0.05 * heatRate;
+                        }
+
+                        // Solder Flow Logic when iron touches wire or pad
+                        if (joint.temp > 183) { // 63/37 Eutectic solder melting point is 183°C
+                            isSizzling = true;
+
+                            // Smoke particles effect
+                            if (Math.random() < 0.4) {
+                                solderParticles.push({
+                                    x: mouseX + (Math.random() - 0.5) * 10,
+                                    y: mouseY + (Math.random() - 0.5) * 10,
+                                    vx: (Math.random() - 0.5) * 0.5,
+                                    vy: -1 - Math.random() * 1.5,
+                                    alpha: 0.7,
+                                    radius: 2 + Math.random() * 3
+                                });
+                            }
+                        }
+
+                        // Overheating check
+                        if (joint.temp > 390) {
+                            joint.burnedTime += 1;
+                            if (joint.burnedTime > 120) {
+                                joint.quality = 'burned';
+                            }
+                        }
+
+                        // Desoldering Wick removes solder when hot
+                        if (activeTool === 'wick' && joint.temp > 185 && joint.solderAmount > 0) {
+                            joint.solderAmount = Math.max(0, joint.solderAmount - 1.2);
+                            if (joint.solderAmount === 0 && joint.quality !== 'burned') {
+                                joint.quality = 'empty';
+                            }
+                        }
+                    }
+
+                    // Applying Solder Wire directly to heated joint
+                    if (activeTool === 'solder' && isMouseDown) {
+                        if (joint.temp > 183) {
+                            joint.solderAmount = Math.min(100, joint.solderAmount + 1.5);
+                            isSizzling = true;
+
+                            // Quality classification based on heat at feed time
+                            if (joint.quality !== 'burned') {
+                                if (joint.temp < 220) {
+                                    joint.quality = 'cold'; // Underheated dull joint
+                                } else if (joint.temp >= 220 && joint.temp <= 380) {
+                                    if (joint.solderAmount >= 40 && joint.solderAmount <= 80) {
+                                        joint.quality = 'ideal'; // Shiny concave fillet
+                                    } else if (joint.solderAmount > 80) {
+                                        joint.quality = 'overfilled'; // Excess solder blob
+                                    }
+                                }
+                            }
+                        } else {
+                            // Trying to feed solder onto cold pad
+                            joint.quality = 'cold';
+                        }
+                    }
+                } else {
+                    // Natural cooling down to ambient temperature (25°C)
+                    if (joint.temp > 25) {
+                        joint.temp -= (joint.temp - 25) * 0.02;
+                    }
+                }
+            });
+
+            // Update sizzle sound FX state
+            if (isSizzling) {
+                playSizzle(0.08);
+            } else {
+                stopSizzle();
+            }
+
+            document.getElementById('pad-temp-hud').innerText = `${Math.round(currentHoverTemp)} °C`;
+
+            // Update particle physics
+            for (let i = solderParticles.length - 1; i >= 0; i--) {
+                const p = solderParticles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= 0.015;
+                p.radius += 0.05;
+                if (p.alpha <= 0) {
+                    solderParticles.splice(i, 1);
+                }
+            }
+
+            // Checklist & Step logic detection
+            updateStepChecklist();
+            updateProgressHUD();
+        }
+
+        /* --- STEP CHECKLIST AUTO-GUIDE --- */
+        function updateStepChecklist() {
+            const hoveredJoint = targetJoints.find(j => {
+                const dx = mouseX - j.x;
+                const dy = mouseY - j.y;
+                return Math.sqrt(dx * dx + dy * dy) < j.radius + 10;
+            });
+
+            const step1 = document.getElementById('step-1');
+            const step2 = document.getElementById('step-2');
+            const step3 = document.getElementById('step-3');
+            const step4 = document.getElementById('step-4');
+            const counter = document.getElementById('step-counter');
+
+            if (hoveredJoint && hoveredJoint.temp > 200 && hoveredJoint.solderAmount === 0) {
+                counter.innerText = "Step 2/4";
+                step1.className = "p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 flex items-start space-x-2 transition opacity-80";
+                step2.className = "p-2.5 rounded-lg bg-blue-950/40 border border-blue-500/40 flex items-start space-x-2 transition shadow-md";
+                step3.className = "p-2.5 rounded-lg bg-slate-800/40 border border-slate-700 flex items-start space-x-2 transition opacity-60";
+            } else if (hoveredJoint && hoveredJoint.solderAmount > 0 && activeTool === 'solder') {
+                counter.innerText = "Step 3/4";
+                step2.className = "p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 flex items-start space-x-2 transition opacity-80";
+                step3.className = "p-2.5 rounded-lg bg-blue-950/40 border border-blue-500/40 flex items-start space-x-2 transition shadow-md";
+            } else if (hoveredJoint && hoveredJoint.solderAmount >= 40 && activeTool === 'iron') {
+                counter.innerText = "Step 4/4";
+                step3.className = "p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-500/40 flex items-start space-x-2 transition opacity-80";
+                step4.className = "p-2.5 rounded-lg bg-blue-950/40 border border-blue-500/40 flex items-start space-x-2 transition shadow-md";
+            } else {
+                counter.innerText = "Step 1/4";
+                step1.className = "p-2.5 rounded-lg bg-blue-950/40 border border-blue-500/40 flex items-start space-x-2 transition";
+                step2.className = "p-2.5 rounded-lg bg-slate-800/40 border border-slate-700 flex items-start space-x-2 transition opacity-60";
+                step3.className = "p-2.5 rounded-lg bg-slate-800/40 border border-slate-700 flex items-start space-x-2 transition opacity-60";
+                step4.className = "p-2.5 rounded-lg bg-slate-800/40 border border-slate-700 flex items-start space-x-2 transition opacity-60";
+            }
+        }
+
+        function updateProgressHUD() {
+            const completed = targetJoints.filter(j => j.solderAmount > 30).length;
+            document.getElementById('completed-joints-count').innerText = `${completed} / ${targetJoints.length}`;
+
+            // Calculate live average quality
+            let totalScore = 0;
+            targetJoints.forEach(j => {
+                if (j.quality === 'ideal') totalScore += 100;
+                else if (j.quality === 'overfilled') totalScore += 70;
+                else if (j.quality === 'cold') totalScore += 40;
+                else if (j.quality === 'burned') totalScore += 10;
+            });
+
+            const avg = targetJoints.length > 0 ? Math.round(totalScore / targetJoints.length) : 0;
+            document.getElementById('score-percentage').innerText = `${avg}%`;
+        }
+
+        /* --- RENDERING CANVASES & WORKPIECE GRAPHICS --- */
+        function drawScene() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Board Background / Base Texture
+            if (currentMode === 'through-hole' || currentMode === 'smd') {
+                // High Quality PCB Green Matte Background
+                ctx.fillStyle = '#064e3b';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // PCB Circuit Traces & Grid Lines
+                ctx.strokeStyle = '#047857';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                const step = 40;
+                for (let x = 0; x < canvas.width; x += step) {
+                    ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
+                }
+                for (let y = 0; y < canvas.height; y += step) {
+                    ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+                }
+                ctx.stroke();
+
+                // Draw DIP IC Chip Body if in Through-Hole Mode
+                if (currentMode === 'through-hole') {
+                    const cx = canvas.width / 2;
+                    const cy = canvas.height / 2;
+
+                    ctx.fillStyle = '#1e293b';
+                    ctx.shadowColor = '#000';
+                    ctx.shadowBlur = 15;
+                    ctx.fillRect(cx - 90, cy - 140, 180, 280);
+                    ctx.shadowBlur = 0;
+
+                    // IC Chip Notch & Text
+                    ctx.fillStyle = '#0f172a';
+                    ctx.beginPath();
+                    ctx.arc(cx, cy - 140, 15, 0, Math.PI);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = 'bold 14px JetBrains Mono, monospace';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('NE555P TIMER', cx, cy - 40);
+                    ctx.font = '10px sans-serif';
+                    ctx.fillText('DUAL IN-LINE PACKAGE', cx, cy - 20);
+                }
+            } else if (currentMode === 'wire-splice') {
+                // Rubber Mat Background
+                ctx.fillStyle = '#18181b';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Grid lines on ESD mat
+                ctx.strokeStyle = '#27272a';
+                ctx.lineWidth = 1;
+                for (let x = 0; x < canvas.width; x += 50) {
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+                }
+                for (let y = 0; y < canvas.height; y += 50) {
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                }
+
+                // Draw Wire Insulation Strips
+                const cy = canvas.height / 2;
+                ctx.fillStyle = '#ef4444'; // Red wire left
+                ctx.fillRect(50, cy - 15, canvas.width / 2 - 180, 30);
+                ctx.fillStyle = '#3b82f6'; // Blue wire right
+                ctx.fillRect(canvas.width / 2 + 180, cy - 15, canvas.width / 2 - 230, 30);
+            } else if (currentMode === 'stained-glass') {
+                // Glass Workbench background with colored glass pieces
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                const cx = canvas.width / 2;
+                const cy = canvas.height / 2;
+
+                // Glass Piece 1 (Ruby Red)
+                ctx.fillStyle = 'rgba(225, 29, 72, 0.7)';
+                ctx.beginPath();
+                ctx.moveTo(cx - 250, cy - 150);
+                ctx.lineTo(cx, cy - 150);
+                ctx.lineTo(cx - 50, cy + 150);
+                ctx.lineTo(cx - 250, cy + 150);
+                ctx.closePath();
+                ctx.fill();
+
+                // Glass Piece 2 (Cobalt Blue)
+                ctx.fillStyle = 'rgba(14, 165, 233, 0.7)';
+                ctx.beginPath();
+                ctx.moveTo(cx, cy - 150);
+                ctx.lineTo(cx + 250, cy - 150);
+                ctx.lineTo(cx + 250, cy + 150);
+                ctx.lineTo(cx - 50, cy + 150);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Draw Copper Pads & Joint Simulation States
+            targetJoints.forEach(joint => {
+                // Pad Heat Glow Effect
+                if (joint.temp > 80) {
+                    const glowGrad = ctx.createRadialGradient(joint.x, joint.y, 5, joint.x, joint.y, joint.radius * 2);
+                    const glowIntensity = Math.min(1, (joint.temp - 80) / 300);
+                    glowGrad.addColorStop(0, `rgba(239, 68, 68, ${glowIntensity * 0.8})`);
+                    glowGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+                    ctx.fillStyle = glowGrad;
+                    ctx.beginPath();
+                    ctx.arc(joint.x, joint.y, joint.radius * 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Base Copper Ring / Pad
+                if (joint.quality === 'burned') {
+                    ctx.fillStyle = '#451a03'; // Burned PCB trace
+                } else {
+                    ctx.fillStyle = '#b87333'; // Shiny copper
+                }
+
+                if (joint.isRect) {
+                    ctx.fillRect(joint.x - joint.width / 2, joint.y - joint.height / 2, joint.width, joint.height);
+                } else {
+                    ctx.beginPath();
+                    ctx.arc(joint.x, joint.y, joint.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Lead/Hole Center
+                if (joint.holeRadius) {
+                    ctx.fillStyle = '#1e293b';
+                    ctx.beginPath();
+                    ctx.arc(joint.x, joint.y, joint.holeRadius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Metallic Pins/Leads protruding
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.beginPath();
+                    ctx.arc(joint.x, joint.y, joint.holeRadius - 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                // Draw Molded Solder Joint Liquid / Solid Volume
+                if (joint.solderAmount > 0) {
+                    const solderRadius = (joint.radius * 0.9) * (joint.solderAmount / 100);
+
+                    let solderFill = '#d1d5db'; // Ideal shiny
+                    if (joint.quality === 'cold') solderFill = '#64748b'; // Dull grey cold joint
+                    if (joint.quality === 'burned') solderFill = '#334155';
+
+                    // Metallic Shiny Gradient
+                    const solderGrad = ctx.createRadialGradient(
+                        joint.x - solderRadius * 0.3,
+                        joint.y - solderRadius * 0.3,
+                        2,
+                        joint.x,
+                        joint.y,
+                        solderRadius
+                    );
+
+                    if (joint.quality === 'ideal') {
+                        solderGrad.addColorStop(0, '#ffffff');
+                        solderGrad.addColorStop(0.4, '#e2e8f0');
+                        solderGrad.addColorStop(1, '#94a3b8');
+                    } else if (joint.quality === 'cold') {
+                        solderGrad.addColorStop(0, '#94a3b8');
+                        solderGrad.addColorStop(1, '#475569');
+                    } else {
+                        solderGrad.addColorStop(0, '#cbd5e1');
+                        solderGrad.addColorStop(1, '#64748b');
+                    }
+
+                    ctx.fillStyle = solderGrad;
+                    ctx.beginPath();
+                    ctx.arc(joint.x, joint.y, solderRadius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Ideal Concave Specular Ring Highlight
+                    if (joint.quality === 'ideal') {
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.arc(joint.x, joint.y, solderRadius * 0.6, -Math.PI * 0.25, Math.PI * 0.5);
+                        ctx.stroke();
+                    }
+                }
+            });
+
+            // Render Smoke Particles
+            solderParticles.forEach(p => {
+                ctx.fillStyle = `rgba(226, 232, 240, ${p.alpha})`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Render Active Tools under Mouse Cursor
+            drawActiveTool();
+        }
+
+        function drawActiveTool() {
+            ctx.save();
+
+            if (activeTool === 'iron') {
+                // Draw Soldering Iron Pencil Tip
+                const tipX = mouseX;
+                const tipY = mouseY;
+
+                // Glowing Tip Gradient based on Station Temp
+                const tempRatio = Math.min(1, (stationTemp - 150) / 330);
+                const glowR = Math.round(239 * tempRatio);
+                const glowG = Math.round(68 * (1 - tempRatio * 0.5));
+
+                // Iron Chisel Tip (Pointed at cursor)
+                ctx.shadowColor = `rgb(${glowR}, ${glowG}, 68)`;
+                ctx.shadowBlur = stationTemp > 300 ? 15 : 2;
+
+                // Tip Metallic body
+                ctx.fillStyle = tipOxidation > 0.5 ? '#475569' : '#cbd5e1';
+                ctx.beginPath();
+                ctx.moveTo(tipX, tipY);
+                ctx.lineTo(tipX + 40, tipY + 70);
+                ctx.lineTo(tipX + 60, tipY + 50);
+                ctx.closePath();
+                ctx.fill();
+
+                // Heating Element / Handle Shaft
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath();
+                ctx.moveTo(tipX + 45, tipY + 65);
+                ctx.lineTo(tipX + 150, tipY + 170);
+                ctx.lineTo(tipX + 170, tipY + 150);
+                ctx.lineTo(tipX + 65, tipY + 45);
+                ctx.closePath();
+                ctx.fill();
+
+                // Heat Core Glow Stripe on Tip
+                ctx.fillStyle = `rgba(${glowR}, ${glowG}, 68, ${tempRatio * 0.9})`;
+                ctx.beginPath();
+                ctx.arc(tipX + 15, tipY + 25, 6, 0, Math.PI * 2);
+                ctx.fill();
+
+            } else if (activeTool === 'solder') {
+                // Draw Solder Wire Reel Strand
+                ctx.strokeStyle = '#e2e8f0';
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(mouseX, mouseY);
+                ctx.bezierCurveTo(mouseX + 50, mouseY + 20, mouseX + 80, mouseY + 80, mouseX + 120, mouseY + 120);
+                ctx.stroke();
+
+                ctx.fillStyle = '#94a3b8';
+                ctx.beginPath();
+                ctx.arc(mouseX, mouseY, 3, 0, Math.PI * 2);
+                ctx.fill();
+
+            } else if (activeTool === 'wick') {
+                // Copper Braided Desoldering Wick
+                ctx.strokeStyle = '#b87333';
+                ctx.lineWidth = 8;
+                ctx.beginPath();
+                ctx.moveTo(mouseX, mouseY);
+                ctx.lineTo(mouseX + 100, mouseY + 100);
+                ctx.stroke();
+
+                // Diamond Braid Pattern lines
+                ctx.strokeStyle = '#d97706';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(mouseX + 5, mouseY - 5);
+                ctx.lineTo(mouseX + 95, mouseY + 95);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        /* --- MAIN ANIMATION TICK --- */
+        function gameLoop() {
+            updateSimulation();
+            drawScene();
+            requestAnimationFrame(gameLoop);
+        }
+
+        /* --- WORK INSPECTION & EVALUATION DIALOG --- */
+        function evaluateWork() {
+            let idealCount = 0;
+            let coldCount = 0;
+            let burnedCount = 0;
+            let bridgeCount = 0;
+
+            targetJoints.forEach(j => {
+                if (j.quality === 'ideal') idealCount++;
+                if (j.quality === 'cold') coldCount++;
+                if (j.quality === 'burned') burnedCount++;
+                if (j.quality === 'overfilled') bridgeCount++;
+            });
+
+            const total = targetJoints.length;
+            const scorePct = Math.round((idealCount / total) * 100);
+
+            document.getElementById('eval-ideal-count').innerText = `${idealCount} / ${total}`;
+            document.getElementById('eval-cold-count').innerText = `${coldCount}`;
+            document.getElementById('eval-burned-count').innerText = `${burnedCount}`;
+            document.getElementById('eval-bridge-count').innerText = `${bridgeCount}`;
+
+            let grade = 'F';
+            let feedback = "Multiple defective joints detected. Keep practicing heat transfer timing!";
+
+            if (scorePct >= 90) {
+                grade = 'A+ (Excellent)';
+                feedback = "Outstanding soldering technique! Smooth, shiny concave fillets with zero thermal damage.";
+            } else if (scorePct >= 70) {
+                grade = 'B (Good)';
+                feedback = "Solid work! A few joints have excess solder or slight cold spots, but mechanically sound.";
+            } else if (scorePct >= 50) {
+                grade = 'C (Needs Practice)';
+                feedback = "Watch out for underheating cold joints. Make sure the pad reaches 220°C before feeding solder.";
+            }
+
+            document.getElementById('eval-grade').innerText = grade;
+            document.getElementById('eval-feedback').innerText = `"${feedback}"`;
+
+            document.getElementById('eval-modal').classList.remove('hidden');
+            playBeep(700, "triangle", 0.15);
+        }
+
+        function closeModal() {
+            document.getElementById('eval-modal').classList.add('hidden');
+        }
+
+        /* --- DYNAMIC PWA SETUP & SERVICE WORKER INJECTION --- */
+        let deferredPrompt = null;
+
+        function generatePwaIcon(size) {
+            const iconCanvas = document.createElement('canvas');
+            iconCanvas.width = size;
+            iconCanvas.height = size;
+            const iconCtx = iconCanvas.getContext('2d');
+
+            // Background
+            iconCtx.fillStyle = '#0f172a';
+            iconCtx.fillRect(0, 0, size, size);
+
+            // Ring Outer Border
+            iconCtx.strokeStyle = '#3b82f6';
+            iconCtx.lineWidth = size * 0.05;
+            iconCtx.beginPath();
+            iconCtx.arc(size/2, size/2, size * 0.4, 0, Math.PI * 2);
+            iconCtx.stroke();
+
+            // Flame / Soldering Glow Icon Symbol
+            iconCtx.fillStyle = '#ef4444';
+            iconCtx.beginPath();
+            iconCtx.arc(size/2, size/2, size * 0.25, 0, Math.PI * 2);
+            iconCtx.fill();
+
+            iconCtx.fillStyle = '#f59e0b';
+            iconCtx.beginPath();
+            iconCtx.arc(size/2, size/2, size * 0.15, 0, Math.PI * 2);
+            iconCtx.fill();
+
+            return iconCanvas.toDataURL('image/png');
+        }
+
+        function initPwaManifestAndServiceWorker() {
+            // 1. Dynamic Web App Manifest via Blob URL
+            const icon192 = generatePwaIcon(192);
+            const icon512 = generatePwaIcon(512);
+
+            const manifestObj = {
+                name: "SolderLab Virtual Workshop Simulator",
+                short_name: "SolderLab",
+                description: "Interactive 3D & 2D Soldering Technique Workshop Simulator PWA",
+                start_url: "./",
+                display: "standalone",
+                background_color: "#0f172a",
+                theme_color: "#0f172a",
+                icons: [
+                    { src: icon192, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+                    { src: icon512, sizes: "512x512", type: "image/png", purpose: "any maskable" }
+                ]
+            };
+
+            const manifestBlob = new Blob([JSON.stringify(manifestObj)], { type: 'application/json' });
+            const manifestUrl = URL.createObjectURL(manifestBlob);
+            const manifestLink = document.createElement('link');
+            manifestLink.rel = 'manifest';
+            manifestLink.href = manifestUrl;
+            document.head.appendChild(manifestLink);
+
+            // Add Apple Touch Icon
+            const appleIcon = document.createElement('link');
+            appleIcon.rel = 'apple-touch-icon';
+            appleIcon.href = icon192;
+            document.head.appendChild(appleIcon);
+
+            // 2. Dynamic Service Worker Registration via Blob URL
+            if ('serviceWorker' in navigator) {
+                const swCode = `
+                    const CACHE_NAME = 'solderlab-pwa-v1';
+                    const ASSETS = [
+                        './',
+                        'https://cdn.tailwindcss.com',
+                        'https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js',
+                        'https://unpkg.com/@phosphor-icons/web'
+                    ];
+
+                    self.addEventListener('install', (event) => {
+                        event.waitUntil(
+                            caches.open(CACHE_NAME).then((cache) => {
+                                return cache.addAll(ASSETS).catch(() => {});
+                            }).then(() => self.skipWaiting())
+                        );
+                    });
+
+                    self.addEventListener('activate', (event) => {
+                        event.waitUntil(
+                            caches.keys().then((keys) => {
+                                return Promise.all(
+                                    keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+                                );
+                            }).then(() => self.clients.claim())
+                        );
+                    });
+
+                    self.addEventListener('fetch', (event) => {
+                        event.respondWith(
+                            caches.match(event.request).then((cachedResponse) => {
+                                if (cachedResponse) {
+                                    fetch(event.request).then((networkResponse) => {
+                                        if (networkResponse.status === 200) {
+                                            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
+                                        }
+                                    }).catch(() => {});
+                                    return cachedResponse;
+                                }
+                                return fetch(event.request);
+                            })
+                        );
+                    });
+                `;
+
+                const swBlob = new Blob([swCode], { type: 'text/javascript' });
+                const swUrl = URL.createObjectURL(swBlob);
+
+                navigator.serviceWorker.register(swUrl)
+                    .then((reg) => {
+                        console.log('SolderLab PWA Service Worker Registered Successfully', reg);
+                        updateOnlineOfflineStatus();
+                    })
+                    .catch((err) => {
+                        console.log('SW Registration Note:', err);
+                    });
+            }
+        }
+
+        // PWA Install Event Handler
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+
+            // Display Install UI controls
+            const installBtn = document.getElementById('pwa-install-btn');
+            const installBanner = document.getElementById('pwa-install-banner');
+
+            if (installBtn) installBtn.classList.remove('hidden');
+            if (installBanner) installBanner.classList.remove('hidden');
+        });
+
+        function triggerPwaInstall() {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('User accepted the SolderLab PWA installation');
+                    const badgeText = document.getElementById('pwa-status-text');
+                    if (badgeText) badgeText.innerText = 'App Installed';
+                }
+                deferredPrompt = null;
+                dismissPwaBanner();
+            });
+        }
+
+        function dismissPwaBanner() {
+            const installBanner = document.getElementById('pwa-install-banner');
+            if (installBanner) installBanner.classList.add('hidden');
+        }
+
+        function updateOnlineOfflineStatus() {
+            const badgeText = document.getElementById('pwa-status-text');
+            const badge = document.getElementById('pwa-status-badge');
+
+            if (navigator.onLine) {
+                if (badgeText) badgeText.innerText = 'PWA Ready';
+                if (badge) badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-500/40 flex items-center gap-1 shadow-sm';
+            } else {
+                if (badgeText) badgeText.innerText = 'Offline Mode';
+                if (badge) badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950/80 text-amber-400 border border-amber-500/40 flex items-center gap-1 shadow-sm';
+            }
+        }
+
+        window.addEventListener('online', updateOnlineOfflineStatus);
+        window.addEventListener('offline', updateOnlineOfflineStatus);
+
+        /* --- STARTUP INITIALIZATION --- */
+        window.onload = function() {
+            resizeCanvas();
+            initModeData('through-hole');
+            initPwaManifestAndServiceWorker();
+            updateOnlineOfflineStatus();
+            gameLoop();
+        };
+    </script>
+</body>
+</html>
